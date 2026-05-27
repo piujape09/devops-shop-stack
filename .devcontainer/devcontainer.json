@@ -53,8 +53,19 @@
     "5432": { "label": "postgres",           "onAutoForward": "ignore" }
   },
 
-  // Pre-pull Postgres + warm Maven so first `compose up` is faster.
-  "onCreateCommand": "docker pull postgres:16-alpine || true",
+  // ---------------------------------------------------------------------
+  // Prebuild hooks — runs ONCE when GitHub builds the prebuild image, so the
+  // snapshot already has all Maven deps + node_modules + Docker base images.
+  // New Codespaces created from the prebuild boot in ~30s instead of 5-10 min.
+  //
+  // Enable prebuilds at:
+  //   github.com/<user>/<repo> -> Settings -> Codespaces -> Prebuilds -> Set up
+  // ---------------------------------------------------------------------
+  "onCreateCommand": "bash .devcontainer/prebuild.sh",
+
+  // Runs whenever the prebuild updates (e.g. new commit on the prebuild branch)
+  // — keeps caches fresh without a full rebuild.
+  "updateContentCommand": "bash .devcontainer/prebuild.sh",
 
   // Bring the stack up after the container is attached.
   // -d so the terminal stays interactive; logs visible via `docker compose logs -f`.
