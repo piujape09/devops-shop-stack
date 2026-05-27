@@ -1,0 +1,7 @@
+# Force LF on shell scripts so they're executable inside the Linux Codespace
+# even when the working copy was created on Windows (CRLF).
+*.sh        text eol=lf
+*.bash      text eol=lf
+Dockerfile  text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf

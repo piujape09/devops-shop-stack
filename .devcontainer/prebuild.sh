@@ -2,39 +2,50 @@
 # ---------------------------------------------------------------------------
 # Prebuild script for GitHub Codespaces.
 # Runs once during prebuild image creation (onCreateCommand) and again on
-# prebuild updates (updateContentCommand). Anything cached here will be
-# baked into the prebuild snapshot, so fresh Codespaces start in seconds.
+# prebuild updates (updateContentCommand). Anything cached here is baked into
+# the prebuild snapshot so fresh Codespaces start in seconds.
+#
+# Best-effort: a failure in any single warming step prints a warning but does
+# NOT abort the prebuild. We only care that the snapshot is *useful*, not that
+# every cache is 100% populated.
 # ---------------------------------------------------------------------------
-set -euo pipefail
+set -u
 
-echo "==> Prebuild: pulling base Docker images in parallel..."
-docker pull postgres:16-alpine                              &
-docker pull eclipse-temurin:21-jre-alpine                   &
-docker pull maven:3.9.9-eclipse-temurin-21                  &
-docker pull node:20-alpine                                  &
-docker pull nginx:1.27-alpine                               &
-wait
+warn() { echo "WARN: $*" >&2; }
 
-echo "==> Prebuild: warming Maven cache for all backend services in parallel..."
-SERVICES=(api-gateway user-service product-service order-service payment-service)
-pids=()
-for svc in "${SERVICES[@]}"; do
-  (
-    cd "backend-services/${svc}"
-    # Pull every dependency + plugin jar into ~/.m2 without compiling tests.
-    mvn -B -ntp -DskipTests dependency:go-offline
-  ) &
-  pids+=($!)
+# --- 1. Pre-pull container base images ------------------------------------
+echo "==> Prebuild: pulling base Docker images..."
+for img in \
+  postgres:16-alpine \
+  eclipse-temurin:21-jre-alpine \
+  maven:3.9.9-eclipse-temurin-21 \
+  node:20-alpine \
+  nginx:1.27-alpine
+do
+  docker pull "$img" || warn "docker pull $img failed"
 done
-for pid in "${pids[@]}"; do wait "${pid}"; done
 
+# --- 2. Warm Maven cache for every backend service ------------------------
+echo "==> Prebuild: warming Maven cache..."
+for svc in api-gateway user-service product-service order-service payment-service; do
+  echo "    - $svc"
+  (
+    cd "backend-services/${svc}" || exit 0
+    # `package` is more reliable than `dependency:go-offline` for fully
+    # populating ~/.m2 because it forces real compile + test-compile resolution.
+    mvn -B -ntp -DskipTests -T1C package
+  ) || warn "maven warm for ${svc} failed (continuing)"
+done
+
+# --- 3. Frontend deps ------------------------------------------------------
 echo "==> Prebuild: installing frontend dependencies..."
 (
-  cd frontend-react
-  npm ci --no-audit --no-fund
-)
+  cd frontend-react || exit 0
+  if [ -f package-lock.json ]; then
+    npm ci --no-audit --no-fund
+  else
+    npm install --no-audit --no-fund
+  fi
+) || warn "npm install for frontend-react failed (continuing)"
 
-echo "==> Prebuild: complete. Snapshot will include:"
-echo "    - Docker base images (postgres, temurin, maven, node, nginx)"
-echo "    - ~/.m2 with all Maven deps for 5 services"
-echo "    - frontend-react/node_modules"
+echo "==> Prebuild: done."
