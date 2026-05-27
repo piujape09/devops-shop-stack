@@ -121,13 +121,3 @@ Jenkins ── test ── SonarQube ── build ── Trivy scan ── docke
 | Nginx Ingress | Single entrypoint, path-based routing, TLS termination |
 | HPA | Auto-scale pods on CPU/memory (and custom metrics) |
 
-## Production hardening to-do
-
-- Replace plain `Secret` with Sealed Secrets / External Secrets / Vault
-- NetworkPolicies (default-deny + explicit allows)
-- PodDisruptionBudgets for backend and frontend
-- Enable cluster-autoscaler / Karpenter
-- Configure Alertmanager → Slack/PagerDuty
-- Replace single-NAT VPC and in-cluster Postgres with RDS
-- Sign images (cosign) and verify via admission (Kyverno / Gatekeeper)
-- Split backend into the planned microservices (`api-gateway`, `user`, `product`, `order`, `payment`)
