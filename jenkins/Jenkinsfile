@@ -1,0 +1,195 @@
+// Declarative Jenkins pipeline for ShopK8s microservices.
+//
+// Pipeline: Checkout -> per-service Maven test/build (matrix) -> Frontend build
+//           -> Docker build (all 6 images) -> Trivy scan -> Push to registry
+//           -> Render Helm chart -> Commit GitOps repo (Helm values + image tags).
+//
+// Credentials (Manage Jenkins > Credentials):
+//   - dockerhub-creds : username/password for the registry (Docker Hub / ECR / GHCR)
+//   - github-creds    : SSH key for pushing to the GitOps repo
+//
+// Tools (Manage Jenkins > Tools):
+//   - jdk21, maven3, nodejs20
+//
+// Agent capabilities:
+//   - docker CLI + daemon socket
+//   - trivy, yq, helm in PATH (or use a container agent that ships them)
+
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    ansiColor('xterm')
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+    disableConcurrentBuilds()
+    timeout(time: 60, unit: 'MINUTES')
+  }
+
+  tools {
+    jdk    'jdk21'
+    maven  'maven3'
+    nodejs 'nodejs20'
+  }
+
+  environment {
+    REGISTRY           = 'docker.io'
+    REGISTRY_NAMESPACE = 'your-dockerhub-user'                    // CHANGE ME
+    IMAGE_TAG          = "${env.BUILD_NUMBER}-${env.GIT_COMMIT?.take(7) ?: 'local'}"
+    GITOPS_REPO        = 'git@github.com:your-org/shopk8s-gitops.git' // CHANGE ME
+    GITOPS_BRANCH      = 'main'
+    HELM_CHART_PATH    = 'helm/shopk8s'
+    HELM_VALUES_FILE   = 'helm/shopk8s/values-dev.yaml'
+  }
+
+  stages {
+
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    // -----------------------------------------------------------------------
+    // Build + test every backend microservice in parallel.
+    // -----------------------------------------------------------------------
+    stage('Backend: Test & Build (parallel)') {
+      steps {
+        script {
+          def services = ['api-gateway', 'user-service', 'product-service', 'order-service', 'payment-service']
+          def branches = [:]
+          services.each { svc ->
+            branches[svc] = {
+              dir("backend-services/${svc}") {
+                sh 'mvn -B -ntp clean verify'
+              }
+            }
+          }
+          parallel branches
+        }
+      }
+      post {
+        always {
+          junit testResults: 'backend-services/**/target/surefire-reports/*.xml', allowEmptyResults: true
+        }
+      }
+    }
+
+    stage('Frontend: Install & Build') {
+      steps {
+        dir('frontend-react') {
+          sh 'npm ci'
+          sh 'npm run build'
+        }
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Build container images for all services. Iterating in a script block so
+    // we can keep one source of truth for the {service -> context} map.
+    // -----------------------------------------------------------------------
+    stage('Docker: Build Images') {
+      steps {
+        script {
+          def images = imageMatrix()
+          images.each { svc, ctx ->
+            def img = "${REGISTRY}/${REGISTRY_NAMESPACE}/shopk8s-${svc}"
+            sh "docker build -t ${img}:${IMAGE_TAG} -t ${img}:latest ${ctx}"
+          }
+        }
+      }
+    }
+
+    stage('Security: Trivy Scan') {
+      steps {
+        script {
+          imageMatrix().each { svc, _ctx ->
+            def img = "${REGISTRY}/${REGISTRY_NAMESPACE}/shopk8s-${svc}:${IMAGE_TAG}"
+            // Flip --exit-code to 1 once your baseline is clean.
+            sh "trivy image --exit-code 0 --severity HIGH,CRITICAL --no-progress ${img}"
+          }
+        }
+      }
+    }
+
+    stage('Docker: Push') {
+      when { branch 'main' }
+      steps {
+        withCredentials([usernamePassword(
+            credentialsId: 'dockerhub-creds',
+            usernameVariable: 'REG_USER',
+            passwordVariable: 'REG_PASS')]) {
+          script {
+            sh "echo \"\$REG_PASS\" | docker login ${REGISTRY} -u \"\$REG_USER\" --password-stdin"
+            imageMatrix().each { svc, _ctx ->
+              def img = "${REGISTRY}/${REGISTRY_NAMESPACE}/shopk8s-${svc}"
+              sh "docker push ${img}:${IMAGE_TAG}"
+              sh "docker push ${img}:latest"
+            }
+            sh "docker logout ${REGISTRY}"
+          }
+        }
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Render the Helm chart to catch templating errors before GitOps push.
+    // -----------------------------------------------------------------------
+    stage('Helm: Lint & Template') {
+      steps {
+        sh """
+          helm lint ${HELM_CHART_PATH} -f ${HELM_VALUES_FILE}
+          helm template shopk8s ${HELM_CHART_PATH} -f ${HELM_VALUES_FILE} > /tmp/rendered.yaml
+          wc -l /tmp/rendered.yaml
+        """
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Bump image tags in the GitOps repo's Helm values file. ArgoCD takes over
+    // from here and rolls out the new versions.
+    // -----------------------------------------------------------------------
+    stage('GitOps: Update Image Tags') {
+      when { branch 'main' }
+      steps {
+        sshagent(credentials: ['github-creds']) {
+          sh """
+            set -e
+            rm -rf gitops
+            git clone --branch ${GITOPS_BRANCH} ${GITOPS_REPO} gitops
+            cd gitops
+
+            for svc in api-gateway user-service product-service order-service payment-service frontend; do
+              yq -i ".services.\\"\$svc\\".image.tag = \\"${IMAGE_TAG}\\"" ${HELM_VALUES_FILE}
+            done
+
+            git config user.email "jenkins@ci.local"
+            git config user.name  "jenkins-ci"
+            git add -A
+            git commit -m "ci: bump shopk8s images to ${IMAGE_TAG}" || echo "no changes"
+            git push origin ${GITOPS_BRANCH}
+          """
+        }
+      }
+    }
+  }
+
+  post {
+    success { echo "Build ${IMAGE_TAG} succeeded." }
+    failure { echo "Build ${IMAGE_TAG} failed." }
+    always  { sh 'docker image prune -f || true' }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Single source of truth for the {service -> docker build context} mapping.
+// Keep this in sync with helm/shopk8s/values.yaml `services:` block.
+// ---------------------------------------------------------------------------
+def imageMatrix() {
+  return [
+    'api-gateway'    : 'backend-services/api-gateway',
+    'user-service'   : 'backend-services/user-service',
+    'product-service': 'backend-services/product-service',
+    'order-service'  : 'backend-services/order-service',
+    'payment-service': 'backend-services/payment-service',
+    'frontend'       : 'frontend-react',
+  ]
+}

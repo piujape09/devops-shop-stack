@@ -1,0 +1,147 @@
+# ============================================================================
+# ShopK8s — default values
+# Per-env overrides live in values-{dev,staging,prod}.yaml
+# ============================================================================
+
+nameOverride: ""
+fullnameOverride: ""
+
+# ---------------------------------------------------------------------------
+# In-cluster Postgres (disable for managed RDS / Cloud SQL)
+# ---------------------------------------------------------------------------
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  storage: 1Gi
+  auth:
+    database: shop
+    username: shop
+    password: shop
+  resources:
+    requests: { cpu: "100m", memory: "128Mi" }
+    limits:   { cpu: "500m", memory: "512Mi" }
+
+# ---------------------------------------------------------------------------
+# JWT settings — shared by user-service (issuer) and api-gateway (validator)
+# ---------------------------------------------------------------------------
+jwt:
+  # SECURITY: replace via --set or a SealedSecret/ExternalSecret in real envs.
+  secret: change-me-32-bytes-min-change-me-32-bytes-min
+  issuer: shopk8s
+  ttlSeconds: 3600
+
+# ---------------------------------------------------------------------------
+# Ingress (Nginx ingress-controller)
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  host: shop.local
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+  tls:
+    enabled: false
+    secretName: shop-tls
+
+# ---------------------------------------------------------------------------
+# Microservices and frontend
+#   Each entry produces a Deployment + Service, optionally HPA + ServiceMonitor.
+# ---------------------------------------------------------------------------
+services:
+
+  api-gateway:
+    kind: backend
+    image: { repository: api-gateway, tag: latest, pullPolicy: IfNotPresent }
+    replicas: 2
+    port: 5000
+    envFromJwt: true
+    env:
+      USER_SERVICE_URL:    http://user-service:5002
+      PRODUCT_SERVICE_URL: http://product-service:5001
+      ORDER_SERVICE_URL:   http://order-service:5003
+      PAYMENT_SERVICE_URL: http://payment-service:5004
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "500m", memory: "512Mi" }
+    hpa: { enabled: true, min: 2, max: 6, cpuTarget: 70 }
+    probes:
+      readiness: /actuator/health/readiness
+      liveness:  /actuator/health/liveness
+    prometheus: { enabled: true, path: /actuator/prometheus }
+
+  user-service:
+    kind: backend
+    image: { repository: user-service, tag: latest, pullPolicy: IfNotPresent }
+    replicas: 2
+    port: 5002
+    envFromPostgres: true
+    envFromJwt: true
+    resources:
+      requests: { cpu: "100m", memory: "384Mi" }
+      limits:   { cpu: "500m", memory: "768Mi" }
+    hpa: { enabled: true, min: 2, max: 5, cpuTarget: 70 }
+    probes:
+      readiness: /actuator/health/readiness
+      liveness:  /actuator/health/liveness
+    prometheus: { enabled: true, path: /actuator/prometheus }
+
+  product-service:
+    kind: backend
+    image: { repository: product-service, tag: latest, pullPolicy: IfNotPresent }
+    replicas: 2
+    port: 5001
+    envFromPostgres: true
+    resources:
+      requests: { cpu: "100m", memory: "384Mi" }
+      limits:   { cpu: "500m", memory: "768Mi" }
+    hpa: { enabled: true, min: 2, max: 6, cpuTarget: 70 }
+    probes:
+      readiness: /actuator/health/readiness
+      liveness:  /actuator/health/liveness
+    prometheus: { enabled: true, path: /actuator/prometheus }
+
+  order-service:
+    kind: backend
+    image: { repository: order-service, tag: latest, pullPolicy: IfNotPresent }
+    replicas: 2
+    port: 5003
+    envFromPostgres: true
+    env:
+      PRODUCT_SERVICE_URL: http://product-service:5001
+    resources:
+      requests: { cpu: "100m", memory: "384Mi" }
+      limits:   { cpu: "500m", memory: "768Mi" }
+    hpa: { enabled: true, min: 2, max: 5, cpuTarget: 70 }
+    probes:
+      readiness: /actuator/health/readiness
+      liveness:  /actuator/health/liveness
+    prometheus: { enabled: true, path: /actuator/prometheus }
+
+  payment-service:
+    kind: backend
+    image: { repository: payment-service, tag: latest, pullPolicy: IfNotPresent }
+    replicas: 2
+    port: 5004
+    resources:
+      requests: { cpu: "50m",  memory: "256Mi" }
+      limits:   { cpu: "300m", memory: "512Mi" }
+    hpa: { enabled: false }
+    probes:
+      readiness: /actuator/health/readiness
+      liveness:  /actuator/health/liveness
+    prometheus: { enabled: true, path: /actuator/prometheus }
+
+  frontend:
+    kind: frontend
+    image: { repository: frontend-react, tag: latest, pullPolicy: IfNotPresent }
+    replicas: 2
+    port: 80
+    resources:
+      requests: { cpu: "50m",  memory: "64Mi" }
+      limits:   { cpu: "250m", memory: "128Mi" }
+    hpa: { enabled: true, min: 2, max: 5, cpuTarget: 70 }
+    probes:
+      readiness: /
+      liveness:  /
+    prometheus: { enabled: false }

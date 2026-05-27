@@ -1,0 +1,17 @@
+# pattern files Helm ignores when packaging
+.DS_Store
+.git/
+.gitignore
+.bzr/
+.bzrignore
+.hg/
+.hgignore
+.svn/
+*.tmproj
+*.bak
+*.swp
+*~
+.project
+.idea/
+*.tmproj
+.vscode/

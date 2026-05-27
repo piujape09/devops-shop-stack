@@ -1,0 +1,27 @@
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+  config:
+    limits_config:
+      retention_period: 168h    # 7 days
+
+promtail:
+  enabled: true
+  config:
+    snippets:
+      pipelineStages:
+        - cri: {}
+        - match:
+            selector: '{app="backend"}'
+            stages:
+              - regex:
+                  expression: '^(?P<ts>\S+)\s+(?P<level>\w+)\s+(?P<thread>\[.*?\])\s+(?P<logger>\S+)\s+:\s+(?P<message>.*)$'
+              - labels:
+                  level:
+
+grafana:
+  enabled: false               # using Grafana from kube-prometheus-stack
+prometheus:
+  enabled: false

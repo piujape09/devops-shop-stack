@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: shopk8s
+  namespace: argocd
+spec:
+  description: ShopK8s GitOps project
+  sourceRepos:
+    - 'https://github.com/your-org/shopk8s-gitops.git'
+    - 'git@github.com:your-org/shopk8s-gitops.git'
+  destinations:
+    - namespace: 'shop-*'
+      server: https://kubernetes.default.svc
+    - namespace: 'monitoring'
+      server: https://kubernetes.default.svc
+    - namespace: 'logging'
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+  namespaceResourceBlacklist:
+    - group: ''
+      kind: ResourceQuota
+    - group: ''
+      kind: LimitRange
+  orphanedResources:
+    warn: true

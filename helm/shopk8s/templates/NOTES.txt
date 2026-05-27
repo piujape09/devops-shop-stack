@@ -1,0 +1,20 @@
+ShopK8s {{ .Chart.AppVersion }} has been deployed to namespace "{{ .Release.Namespace }}".
+
+Services:
+{{- range $name, $svc := .Values.services }}
+  - {{ $name }}  ({{ $svc.replicas | default 1 }} replicas, port {{ $svc.port }})
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+
+Access the app at: http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}
+
+For local minikube, map the hostname:
+  $ip = (minikube ip)
+  Add-Content "$env:windir\System32\drivers\etc\hosts" "$ip {{ .Values.ingress.host }}"
+{{- end }}
+
+Useful:
+  kubectl -n {{ .Release.Namespace }} get pods,svc,ingress,hpa
+  kubectl -n {{ .Release.Namespace }} logs deploy/api-gateway -f
+  helm -n {{ .Release.Namespace }} rollback {{ .Release.Name }} 1

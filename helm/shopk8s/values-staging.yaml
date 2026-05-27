@@ -1,0 +1,17 @@
+# staging overrides
+ingress:
+  host: shop.staging.example.com
+  tls:
+    enabled: true
+    secretName: shop-staging-tls
+
+postgres:
+  storage: 5Gi
+
+# Bump replicas modestly for staging
+services:
+  api-gateway:     { replicas: 2 }
+  user-service:    { replicas: 2 }
+  product-service: { replicas: 2 }
+  order-service:   { replicas: 2 }
+  frontend:        { replicas: 2 }

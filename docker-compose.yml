@@ -1,0 +1,86 @@
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# Shared env blocks so we don't repeat ourselves.
+# ---------------------------------------------------------------------------
+x-postgres-env: &postgres-env
+  SPRING_DATASOURCE_USERNAME: shop
+  SPRING_DATASOURCE_PASSWORD: shop
+  SPRING_DATASOURCE_DRIVER:   org.postgresql.Driver
+
+x-jwt-env: &jwt-env
+  JWT_SECRET: change-me-32-bytes-min-change-me-32-bytes-min
+  JWT_ISSUER: shopk8s
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: shop
+      POSTGRES_USER: shop
+      POSTGRES_PASSWORD: shop
+    ports: ["5432:5432"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shop -d shop"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  user-service:
+    build: ./backend-services/user-service
+    environment:
+      <<: [*postgres-env, *jwt-env]
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/shop
+    ports: ["5002:5002"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  product-service:
+    build: ./backend-services/product-service
+    environment:
+      <<: *postgres-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/shop
+    ports: ["5001:5001"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  order-service:
+    build: ./backend-services/order-service
+    environment:
+      <<: *postgres-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/shop
+      PRODUCT_SERVICE_URL:   http://product-service:5001
+    ports: ["5003:5003"]
+    depends_on:
+      postgres:        { condition: service_healthy }
+      product-service: { condition: service_started }
+
+  payment-service:
+    build: ./backend-services/payment-service
+    ports: ["5004:5004"]
+
+  api-gateway:
+    build: ./backend-services/api-gateway
+    environment:
+      <<: *jwt-env
+      USER_SERVICE_URL:    http://user-service:5002
+      PRODUCT_SERVICE_URL: http://product-service:5001
+      ORDER_SERVICE_URL:   http://order-service:5003
+      PAYMENT_SERVICE_URL: http://payment-service:5004
+    ports: ["5000:5000"]
+    depends_on:
+      user-service:    { condition: service_started }
+      product-service: { condition: service_started }
+      order-service:   { condition: service_started }
+      payment-service: { condition: service_started }
+
+  frontend:
+    build: ./frontend-react
+    ports: ["3000:80"]
+    depends_on:
+      api-gateway: { condition: service_started }
+
+volumes:
+  postgres_data:

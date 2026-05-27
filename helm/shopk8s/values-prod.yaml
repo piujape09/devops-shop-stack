@@ -1,0 +1,54 @@
+# production overrides
+ingress:
+  host: shop.example.com
+  tls:
+    enabled: true
+    secretName: shop-prod-tls
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+
+# Disable the in-cluster Postgres in prod — use managed RDS/CloudSQL instead.
+# Then point services at it via the SPRING_DATASOURCE_URL env override.
+postgres:
+  enabled: false
+
+services:
+  api-gateway:
+    replicas: 3
+    hpa: { enabled: true, min: 3, max: 10, cpuTarget: 65 }
+    env:
+      # override at deploy time with --set or external Secret
+      USER_SERVICE_URL:    http://user-service:5002
+      PRODUCT_SERVICE_URL: http://product-service:5001
+      ORDER_SERVICE_URL:   http://order-service:5003
+      PAYMENT_SERVICE_URL: http://payment-service:5004
+
+  user-service:
+    replicas: 3
+    hpa: { enabled: true, min: 3, max: 8, cpuTarget: 65 }
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://shop-prod.cluster-xxxx.us-east-1.rds.amazonaws.com:5432/users
+    resources:
+      requests: { cpu: "250m", memory: "512Mi" }
+      limits:   { cpu: "1",    memory: "1Gi" }
+
+  product-service:
+    replicas: 3
+    hpa: { enabled: true, min: 3, max: 10, cpuTarget: 65 }
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://shop-prod.cluster-xxxx.us-east-1.rds.amazonaws.com:5432/products
+
+  order-service:
+    replicas: 3
+    hpa: { enabled: true, min: 3, max: 8, cpuTarget: 65 }
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://shop-prod.cluster-xxxx.us-east-1.rds.amazonaws.com:5432/orders
+
+  payment-service:
+    replicas: 2
+
+  frontend:
+    replicas: 3
+    hpa: { enabled: true, min: 3, max: 8, cpuTarget: 70 }

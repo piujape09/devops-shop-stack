@@ -1,0 +1,83 @@
+{{- /* Generate Deployment + Service for every entry under .Values.services */ -}}
+{{- range $name, $svc := .Values.services }}
+{{- $ctx := dict "name" $name "svc" $svc "root" $ }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "shopk8s.serviceLabels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicas | default 1 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "shopk8s.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shopk8s.selectorLabels" $ctx | nindent 8 }}
+      {{- if and $svc.prometheus $svc.prometheus.enabled }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ $svc.port | quote }}
+        prometheus.io/path: {{ $svc.prometheus.path | default "/actuator/prometheus" | quote }}
+      {{- end }}
+    spec:
+      containers:
+        - name: {{ $name }}
+          image: "{{ $svc.image.repository }}:{{ $svc.image.tag | default "latest" }}"
+          imagePullPolicy: {{ $svc.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: {{ $svc.port }}
+          env:
+            - name: SERVER_PORT
+              value: {{ $svc.port | quote }}
+            {{- if $svc.envFromPostgres }}
+            {{- include "shopk8s.envFromPostgres" $ | nindent 12 }}
+            {{- end }}
+            {{- if $svc.envFromJwt }}
+            {{- include "shopk8s.envFromJwt" $ | nindent 12 }}
+            {{- end }}
+            {{- range $k, $v := $svc.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          {{- if $svc.probes }}
+          readinessProbe:
+            httpGet:
+              path: {{ $svc.probes.readiness | default "/" }}
+              port: {{ $svc.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: {{ $svc.probes.liveness | default "/" }}
+              port: {{ $svc.port }}
+            initialDelaySeconds: 45
+            periodSeconds: 20
+          {{- end }}
+          resources:
+            {{- toYaml ($svc.resources | default dict) | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "shopk8s.serviceLabels" $ctx | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "shopk8s.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+{{- end }}

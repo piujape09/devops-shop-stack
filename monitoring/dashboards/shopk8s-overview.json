@@ -1,0 +1,67 @@
+{
+  "title": "ShopK8s Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Backend pods Ready",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(kube_deployment_status_replicas_ready{namespace=\"shop-dev\",deployment=\"backend\"})" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Frontend pods Ready",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        { "expr": "sum(kube_deployment_status_replicas_ready{namespace=\"shop-dev\",deployment=\"frontend\"})" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Backend request rate (req/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        { "expr": "sum by (uri) (rate(http_server_requests_seconds_count{job=\"backend\"}[1m]))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Backend latency p50/p95/p99",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5,  sum by (le) (rate(http_server_requests_seconds_bucket{job=\"backend\"}[5m])))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"backend\"}[5m])))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"backend\"}[5m])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU per pod (cores)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"shop-dev\",container!=\"\"}[2m]))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory per pod (MiB)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        { "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"shop-dev\",container!=\"\"}) / 1024 / 1024" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Pod restarts (last 1h)",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 20 },
+      "targets": [
+        { "expr": "increase(kube_pod_container_status_restarts_total{namespace=\"shop-dev\"}[1h])" }
+      ]
+    }
+  ]
+}

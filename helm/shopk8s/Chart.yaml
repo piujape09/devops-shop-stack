@@ -1,0 +1,10 @@
+apiVersion: v2
+name: shopk8s
+description: ShopK8s - microservices e-commerce platform (api-gateway, user, product, order, payment + React frontend + Postgres)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords: [microservices, spring-boot, react, ecommerce]
+maintainers:
+  - name: shopk8s
+    email: ops@shopk8s.local

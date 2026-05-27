@@ -1,0 +1,84 @@
+{
+  // GitHub Codespaces dev container for ShopK8s.
+  // Boots an Ubuntu VM, installs Docker-in-Docker, then runs `docker compose up`
+  // so the whole stack (5 microservices + Postgres + React frontend) is reachable
+  // on the auto-forwarded ports.
+  //
+  // Free tier: 60 core-hours / month on a 2-core machine.
+  // Heads-up: 6 JVMs + Postgres on a 2-core / 8 GB box is tight.
+  //   If startup is sluggish, open Codespaces with a 4-core machine
+  //   (still inside the free quota — burns through it ~2x faster).
+
+  "name": "ShopK8s (docker-compose)",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": true
+    },
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21",
+      "installMaven": true,
+      "mavenVersion": "3.9.9"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+      "version": "latest",
+      "helm": "latest",
+      "minikube": "none"
+    }
+  },
+
+  // 2-core default is enough; bump to 4 in the Codespaces UI if you want
+  // faster cold boots.
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb",
+    "storage": "32gb"
+  },
+
+  // Auto-forward and label every service port so they appear in the PORTS panel
+  // with friendly names. The frontend is opened in the browser automatically.
+  "forwardPorts": [3000, 5000, 5001, 5002, 5003, 5004, 5432],
+  "portsAttributes": {
+    "3000": { "label": "frontend (React)",   "onAutoForward": "openBrowser" },
+    "5000": { "label": "api-gateway",        "onAutoForward": "notify" },
+    "5001": { "label": "product-service",    "onAutoForward": "silent" },
+    "5002": { "label": "user-service",       "onAutoForward": "silent" },
+    "5003": { "label": "order-service",      "onAutoForward": "silent" },
+    "5004": { "label": "payment-service",    "onAutoForward": "silent" },
+    "5432": { "label": "postgres",           "onAutoForward": "ignore" }
+  },
+
+  // Pre-pull Postgres + warm Maven so first `compose up` is faster.
+  "onCreateCommand": "docker pull postgres:16-alpine || true",
+
+  // Bring the stack up after the container is attached.
+  // -d so the terminal stays interactive; logs visible via `docker compose logs -f`.
+  "postAttachCommand": {
+    "stack": "docker compose up -d --build"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "vmware.vscode-boot-dev-pack",
+        "redhat.vscode-yaml",
+        "ms-azuretools.vscode-docker",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "java.configuration.updateBuildConfiguration": "automatic",
+        "files.eol": "\n"
+      }
+    }
+  },
+
+  "remoteUser": "vscode"
+}

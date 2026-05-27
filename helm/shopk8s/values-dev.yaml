@@ -1,0 +1,18 @@
+# dev overrides
+ingress:
+  host: shop.local
+
+# smaller defaults for laptop / minikube
+postgres:
+  storage: 1Gi
+  resources:
+    requests: { cpu: "50m",  memory: "64Mi" }
+    limits:   { cpu: "300m", memory: "256Mi" }
+
+services:
+  api-gateway:     { replicas: 1, hpa: { enabled: false } }
+  user-service:    { replicas: 1, hpa: { enabled: false } }
+  product-service: { replicas: 1, hpa: { enabled: false } }
+  order-service:   { replicas: 1, hpa: { enabled: false } }
+  payment-service: { replicas: 1 }
+  frontend:        { replicas: 1, hpa: { enabled: false } }
