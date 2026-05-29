@@ -18,7 +18,17 @@ public class ProductController {
     private final ProductRepository repo;
 
     @GetMapping
-    public List<Product> list() { return repo.findAll(); }
+    public List<Product> list(@RequestParam(value = "category", required = false) String category) {
+        if (category != null && !category.isBlank()) {
+            return repo.findByCategoryIgnoreCase(category);
+        }
+        return repo.findAll();
+    }
+
+    @GetMapping("/categories")
+    public List<String> categories() {
+        return repo.findDistinctCategories();
+    }
 
     @GetMapping("/{id}")
     public ResponseEntity<Product> get(@PathVariable Long id) {
@@ -30,7 +40,12 @@ public class ProductController {
                                           @RequestHeader(value = "X-User-Role", required = false) String role) {
         if (role != null && !"admin".equalsIgnoreCase(role)) return ResponseEntity.status(403).build();
         Product saved = repo.save(Product.builder()
-                .name(req.name()).description(req.description()).price(req.price()).build());
+                .name(req.name())
+                .description(req.description())
+                .price(req.price())
+                .category(req.category())
+                .imageUrl(req.imageUrl())
+                .build());
         return ResponseEntity.created(URI.create("/products/" + saved.getId())).body(saved);
     }
 
@@ -46,5 +61,7 @@ public class ProductController {
     public record ProductRequest(
             @NotBlank String name,
             String description,
-            @PositiveOrZero double price) {}
+            @PositiveOrZero double price,
+            String category,
+            String imageUrl) {}
 }

@@ -10,6 +10,10 @@ public class Product {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String name;
+    @Column(length = 1000)
     private String description;
     private double price;
+    private String category;
+    @Column(length = 500)
+    private String imageUrl;
 }

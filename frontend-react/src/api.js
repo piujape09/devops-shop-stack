@@ -17,11 +17,20 @@ async function request(path, options = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+function qs(params) {
+  const entries = Object.entries(params || {}).filter(([, v]) => v != null && v !== "");
+  if (!entries.length) return "";
+  return "?" + new URLSearchParams(entries).toString();
+}
+
 export const api = {
-  login: (data) => request("/auth/login", { method: "POST", body: JSON.stringify(data) }),
-  register: (data) => request("/auth/register", { method: "POST", body: JSON.stringify(data) }),
-  listProducts: () => request("/products"),
-  createProduct: (data) => request("/products", { method: "POST", body: JSON.stringify(data) }),
-  deleteProduct: (id) => request(`/products/${id}`, { method: "DELETE" }),
-  checkout: (data) => request("/orders", { method: "POST", body: JSON.stringify(data) }),
+  login:           (data)        => request("/auth/login", { method: "POST", body: JSON.stringify(data) }),
+  register:        (data)        => request("/auth/register", { method: "POST", body: JSON.stringify(data) }),
+
+  listProducts:    (params = {}) => request(`/products${qs(params)}`),
+  listCategories:  ()            => request("/products/categories"),
+  createProduct:   (data)        => request("/products", { method: "POST", body: JSON.stringify(data) }),
+  deleteProduct:   (id)          => request(`/products/${id}`, { method: "DELETE" }),
+
+  checkout:        (data)        => request("/orders", { method: "POST", body: JSON.stringify(data) }),
 };
